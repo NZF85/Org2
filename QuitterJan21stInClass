@@ -1,0 +1,92 @@
+## Installing packages
+install.packages("ggplot2")
+install.packages("Hmisc")
+install.packages("corrplot")
+
+## Activating the packages
+library(ggplot2)
+library(Hmisc)
+library(corrplot)
+
+# Set working directory; notice the forward slashes
+setwd("D:/Dropbox/Org2.0/Session 1/Analytics Exercise 1/")
+
+# Reading the data
+data<-read.csv("chimera.csv")
+
+
+## Initial look at the data
+
+# Displaying descriptive statistics variables
+names(data)
+summary(data)
+# We are especially interested in the "exit" variable, i.e. whether the employee left
+table(data$exit)
+
+# Run a ttest comparing exit rates of men vs. women
+men <- data$gender==1
+women <- data$gender==0
+ttest <- t.test(data[men,]$exit, data[women,]$exit)
+ttest
+
+# We can also look at correlations between variables
+mcor <- cor(data)
+corrplot(mcor, type="lower", tl.srt=45)
+
+
+## Building a model from a 'training' dataset
+
+# Defining the 'training' and 'testing' datasets 
+data$intrain <- sample(2, size=nrow(data), replace= TRUE)-1 # adds a variable "intrain" to include in training set 
+train <- data[which(data$intrain==1),-14]
+test <- data[which(data$intrain==0),-14]
+
+# Putting the training set in working memory 
+attach(train)
+
+# We first try a model with all possible variables: Logit full model predicting employee departure
+full_logit=(glm(exit ~ scale(salary)+scale(age)+scale(gender)+scale(training)+scale(kpi_performance)+scale(boss_survey)+scale(city_size)+scale(years_since_promotion)+scale(job_satisfaction)+scale(half_day_leaves)+scale(team_size)+scale(rank), family=binomial))
+summary(full_logit)
+
+# A good approach (especially if you had many variables!) is to let a machine learning algorithm hunt for the variables which predict what you are interested in
+
+# Data mining stepwise with Logit ('forward' is one way, there are others)
+model_logit = step(glm(exit ~ 1, family="binomial"), direction="forward", scope ~ scale(salary)+scale(age)+scale(gender)+scale(training)+scale(kpi_performance)+scale(boss_survey)+scale(city_size)+scale(years_since_promotion)+scale(job_satisfaction)+scale(half_day_leaves)+scale(team_size)+scale(rank))
+summary(model_logit)
+
+
+## Estimating the model (which we developed from the 'training' dataset) on the 'testing' dataset
+
+predicted_logit_test= predict(model_logit,newdata=test)
+
+# Confusion matrix
+TABLOGIT<-table(test$exit, predicted_logit_test>0.5)
+TABLOGIT
+
+accuracy_logit = (TABLOGIT[1,1] + TABLOGIT[2,2]) / sum(TABLOGIT)
+accuracy_logit
+
+
+## We could run the same with a continuous target variable
+
+# OLS full model predicting KPI performance
+full_ols=lm(scale(kpi_performance) ~ scale(salary)+scale(age)+scale(gender)+scale(training)+scale(boss_survey)+scale(city_size)+scale(years_since_promotion)+scale(job_satisfaction)+scale(half_day_leaves)+scale(team_size)+scale(rank))
+summary(full_ols)
+
+# Data mining stepwise with OLS
+model_ols = step(lm(scale(kpi_performance) ~ 1), direction="forward", scope ~ scale(salary)+scale(age)+scale(gender)+scale(training)+scale(boss_survey)+scale(city_size)+scale(years_since_promotion)+scale(job_satisfaction)+scale(half_day_leaves)+scale(team_size)+scale(rank))
+summary(model_ols)
+predicted_ols_train= predict(model_ols,newdata=train) # stores the errors of this model in the testing dataset
+
+# Estimating the OLS model (which we developed from the 'training' dataset) on the 'testing' dataset
+predicted_ols_test= predict(model_ols,newdata=test)
+
+## The only difference with a binary variable is in evaluating the performance of our model
+
+# Comparing errors in this model to those in the training set
+rmse <- function(error)
+{
+  sqrt(mean(error^2))
+}
+rmse(predicted_ols_test)
+rmse(predicted_ols_train)
